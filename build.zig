@@ -93,6 +93,35 @@ pub fn build(b: *std.Build) void {
     const run_step = b.step("run", "Run the app");
     run_step.dependOn(&run_cmd.step);
 
+    // Build step for Prism Ruby parser dependency
+    // This step will compile the Prism shared library
+    const prism_dep = b.dependency("prism", .{});
+    const prism_path = prism_dep.path("");
+
+    const prism_bundle_install = b.addSystemCommand(&.{ "bundle", "install" });
+    prism_bundle_install.setCwd(prism_path); // Set working directory to prism dependency folder
+
+    const prism_compile = b.addSystemCommand(&.{ "bundle", "exec", "rake", "compile" });
+    prism_compile.setCwd(prism_path); // Set working directory to prism dependency folder
+    prism_compile.step.dependOn(&prism_bundle_install.step);
+
+    // Create a build step for Prism that can be run with `zig build prism`
+    const prism_step = b.step("prism", "Build Prism Ruby parser dependency");
+    prism_step.dependOn(&prism_compile.step);
+
+    // Link the Prism library to our modules
+    lib_mod.addIncludePath(prism_dep.path("include"));
+    lib_mod.addLibraryPath(prism_dep.path("build"));
+    lib_mod.linkSystemLibrary("prism", .{});
+
+    exe_mod.addIncludePath(prism_dep.path("include"));
+    exe_mod.addLibraryPath(prism_dep.path("build"));
+    exe_mod.linkSystemLibrary("prism", .{});
+
+    // Make the main executable depend on Prism being built
+    exe.step.dependOn(&prism_compile.step);
+    lib.step.dependOn(&prism_compile.step);
+
     // Creates a step for unit testing. This only builds the test executable
     // but does not run it.
     const lib_unit_tests = b.addTest(.{

@@ -2,19 +2,53 @@
 //! you are building an executable. If you are making a library, the convention
 //! is to delete this file and start with root.zig instead.
 
-pub fn main() !void {
-    // Prints to stderr (it's a shortcut based on `std.io.getStdErr()`)
-    std.debug.print("All your {s} are belong to us.\n", .{"codebase"});
+const std = @import("std");
 
-    // stdout is for the actual output of your application, for example if you
-    // are implementing gzip, then only the compressed bytes should be sent to
-    // stdout, not any debugging messages.
+/// This imports the separate module containing `root.zig`. Take a look in `build.zig` for details.
+const lib = @import("zircon_lib");
+
+pub fn main() !void {
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    defer _ = gpa.deinit();
+    const allocator = gpa.allocator();
+
+    // Prints to stderr (it's a shortcut based on `std.io.getStdErr()`)
+    std.debug.print("Zircon - Ruby Parser with Prism\n", .{});
+
+    // stdout is for the actual output of your application
     const stdout_file = std.io.getStdOut().writer();
     var bw = std.io.bufferedWriter(stdout_file);
     const stdout = bw.writer();
 
-    try stdout.print("Run `zig build test` to run the tests.\n", .{});
+    // Example Ruby code to parse
+    const ruby_examples = [_][]const u8{
+        "1 + 2",
+        "puts 'Hello, World!'",
+        "class Person\n  def initialize(name)\n    @name = name\n  end\nend",
+        "[1, 2, 3].map { |x| x * 2 }",
+    };
 
+    try stdout.print("=== Prism Ruby Parser Examples ===\n\n", .{});
+
+    for (ruby_examples, 0..) |example, i| {
+        try stdout.print("Example {}: {s}\n", .{ i + 1, example });
+        try stdout.print("AST (pretty printed):\n", .{});
+
+        // Print the pretty-printed AST
+        lib.PrismParser.parseAndPrint(example);
+
+        // Parse and get serialized AST
+        const serialized = lib.PrismParser.parse(allocator, example) catch |err| {
+            try stdout.print("Error parsing: {}\n", .{err});
+            continue;
+        };
+        defer allocator.free(serialized);
+
+        try stdout.print("Serialized AST size: {} bytes\n", .{serialized.len});
+        try stdout.print("---\n\n", .{});
+    }
+
+    try stdout.print("Run `zig build test` to run the tests.\n", .{});
     try bw.flush(); // Don't forget to flush!
 }
 
@@ -39,8 +73,3 @@ test "fuzz example" {
     };
     try std.testing.fuzz(Context{}, Context.testOne, .{});
 }
-
-const std = @import("std");
-
-/// This imports the separate module containing `root.zig`. Take a look in `build.zig` for details.
-const lib = @import("zircon_lib");
